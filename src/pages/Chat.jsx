@@ -38,6 +38,7 @@ function Chat() {
   setInput('');
 };
 
+
   const handleSend = () => {
     if (!input.trim()) return;
 

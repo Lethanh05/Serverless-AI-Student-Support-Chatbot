@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, Bot, History, GraduationCap } from 'lucide-react';
+import { Send, User, History, GraduationCap } from 'lucide-react';
 import ScheduleTable from '../components/RichUI';
+import uthLogo from '../assets/logo/Logo_UTH.png';
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -76,10 +77,10 @@ function Chat() {
       {/* Sidebar - Dùng GraduationCap và History ở đây giúp import sáng lên */}
       <div className="w-72 bg-[#003580] text-white p-6 hidden md:flex flex-col shadow-xl">
         <div className="flex items-center gap-3 mb-10">
-          <div className="bg-white p-2 rounded-lg">
-            <GraduationCap className="text-[#003580]" size={28} />
+          <div className="p-1 rounded-lg">
+            <img src={uthLogo} alt="UTH Logo" className="w-25 h-10" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">UTH CHATBOT</h1>
+          <h1 className="text-xl font-bold tracking-tight">CHATBOT</h1>
         </div>
         
         <button 
@@ -119,7 +120,13 @@ function Chat() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, index) => (
             <div key={index} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'bot' && <Bot size={20} className="text-blue-600 mt-1" />}
+              {msg.role === 'bot' && (
+                <img
+                  src={uthLogo}
+                  alt="Bot avatar"
+                  className="w-8 h-8 rounded-full object-contain mt-1 bg-white border border-slate-200"
+                />
+              )}
               
               <div className={`max-w-[70%] p-3 rounded-2xl shadow-sm ${
                 msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border rounded-tl-none'
@@ -139,7 +146,11 @@ function Chat() {
 
           {isLoading && (
             <div className="flex justify-start items-center gap-2">
-              <Bot size={20} className="text-blue-600" />
+              <img
+                src={uthLogo}
+                alt="Bot avatar"
+                className="w-6 h-6 rounded-full object-contain bg-white border border-slate-200"
+              />
               <div className="bg-gray-100 p-3 rounded-lg animate-pulse text-xs">Đang xử lý...</div>
             </div>
           )}

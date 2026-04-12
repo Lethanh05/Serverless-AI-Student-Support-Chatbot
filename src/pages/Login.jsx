@@ -7,20 +7,26 @@ export default function Login() {
   const navigate = useNavigate();
 
   // Hàm xử lý khi bấm nút Đăng nhập
-  const handleLogin = (e) => {
-    e.preventDefault(); // Ngăn trang web load lại khi submit form
-    
-    // Giả lập kiểm tra: Chỉ cần nhập đủ MSSV và Password là cho qua
-    if (mssv.trim() !== '' && password.trim() !== '') {
-      // 1. Lưu một token giả vào localStorage của trình duyệt
-      localStorage.setItem('token', 'uth-fake-jwt-token');
-      
-      // 2. Điều hướng người dùng sang trang Chat
-      navigate('/chat');
-    } else {
-      alert("Vui lòng nhập đầy đủ MSSV và Mật khẩu!");
-    }
-  };
+const handleLogin = (e) => {
+  e.preventDefault();
+
+  // Kiểm tra MSSV không được trống
+  if (mssv.trim() === '') {
+    alert("Vui lòng nhập MSSV!");
+    return;
+  }
+
+  // Kiểm tra Mật khẩu phải đúng 6 số
+  const passwordRegex = /^\d{6}$/;
+  if (!passwordRegex.test(password)) {
+    alert("Mật khẩu bắt buộc phải có đúng 6 con số!");
+    return;
+  }
+
+  // Nếu thỏa mãn hết thì mới cho qua
+  localStorage.setItem('token', 'uth-fake-jwt-token');
+  navigate('/chat');
+};
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -38,9 +44,18 @@ export default function Login() {
             <input
               type="text"
               value={mssv}
-              onChange={(e) => setMssv(e.target.value)}
-              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Nhập MSSV của bạn..."
+              autoComplete="off" // Tắt tính năng tự động điền của trình duyệt
+              maxLength={12} // Giới hạn tối đa 12 ký tự
+              pattern="\d{12}" // Chỉ cho phép nhập số và tối đa 12 ký tự
+              title="MSSV chỉ chứa số và tối đa 12 ký tự"
+              className="w-full px-4 py-2 mt-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^\d*$/.test(val)) {}
+                  setMssv(val);
+                }
+              }
+              
             />
           </div>
 
@@ -49,9 +64,18 @@ export default function Login() {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              placeholder="••••••••"
+              className="w-full px-4 py-2 mt-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
+              maxLength ={6}
+              autoComplete="new-password" // Tắt tính năng tự động điền mật khẩu của trình duyệt
+               pattern="\d{6}" // Chỉ cho phép nhập đúng 6 số
+               title="Mật khẩu chỉ chứa số"
+              onChange={(e) => {
+                const val = e.target.value;
+              if (/^\d*$/.test(val)) {
+                setPassword(val);
+              }
+            }}
+               //
             />
           </div>
 

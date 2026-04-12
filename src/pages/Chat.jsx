@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, Bot, History, GraduationCap } from 'lucide-react';
+import { Send, User, Bot, History, GraduationCap, MoreHorizontal, Pin, Edit2, Trash } from 'lucide-react';
 import ScheduleTable from '../components/RichUI';
 
 function Chat() {
@@ -16,6 +16,7 @@ function Chat() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -25,6 +26,13 @@ function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
+
+  // Đóng menu khi click ra ngoài vùng chat
+  useEffect(() => {
+    const closeMenu = () => setShowMenu(false);
+    window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+    }, []);
 
   const createNewChat = () => {
   // Lọc ra những tin nhắn là Bảng để giữ lại, còn lại thì bỏ hết
@@ -41,6 +49,7 @@ function Chat() {
   const handleSend = () => {
     if (!input.trim()) return;
 
+    
     // 1. Thêm tin nhắn của User
     const userMsg = { role: 'user', text: input, type: 'TEXT' };
     setMessages(prev => [...prev, userMsg]);
@@ -83,7 +92,7 @@ function Chat() {
         </div>
         
         <button 
-  onClick={createNewChat} // <-- Thêm dòng này vào đây
+  onClick={createNewChat}
   className="w-full bg-blue-600 hover:bg-blue-500 transition-colors py-3 rounded-xl font-medium mb-8 shadow-lg flex items-center justify-center gap-2"
 >
   + Đoạn chat mới
@@ -92,15 +101,51 @@ function Chat() {
 
         <div className="flex-1 overflow-y-auto">
           <p className="text-xs text-blue-300 font-semibold uppercase tracking-wider mb-4">Lịch sử tra cứu</p>
-          <div className="flex items-center gap-3 p-3 hover:bg-blue-800/50 rounded-lg cursor-pointer transition-all">
+          <div className="group relative flex items-center justify-between p-3 hover:bg-blue-800/50 rounded-lg cursor-pointer transition-all"></div>
+          <div className="flex items-center gap-3 p-3">
             <History size={18} className="text-blue-400" />
             <span className="text-sm">Lịch học tuần này</span>
           </div>
-        </div>
+          <div className="flex items-center gap-3 p-3">
+            <History size={18} className="text-blue-400" />
+            <span className="text-sm">Điểm số học kỳ 1</span>
+          </div>
+          <div className="flex items-center gap-3 p-3">
+            <History size={18} className="text-blue-400" />
+            <span className="text-sm">Phòng thi cuối kỳ</span>
+          </div>
+        <div className="relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(!showMenu);
+            }}
+            className="p-1 hover:bg-blue-700 rounded-md transition-all"
+          >
+            <MoreHorizontal size={18} className="text-blue-300" />
+          </button>
 
-        <div className="pt-6 border-t border-blue-800">
+          {showMenu && (
+            <div className="absolute right-0 top-10 w-40 bg-white rounded-xl shadow-2xl py-2 z-50 text-gray-800 border">
+              <button className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100 text-xs font-medium">
+                <Pin size={14} className="text-gray-500" /> Ghim đoạn chat
+              </button>
+              <button className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100 text-xs font-medium">
+                <Edit2 size={14} className="text-gray-500" /> Chỉnh sửa
+              </button>
+              <div className="border-t my-1"></div>
+              <button className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100 text-xs font-medium text-red-600">
+                <Trash size={14} className="text-red-500" /> Xóa
+              </button>
+            </div>
+          )}
+        </div>
+        </div>
+        <div className="pt-6 border-t text-white">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center font-bold">A</div>
+            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold">
+              <User size={20} className="text-blue-600 mt-1" />
+            </div>
             <div>
               <p className="text-sm font-bold">Văn A</p>
               <p className="text-xs text-blue-300">Sinh viên - UTH</p>
@@ -112,7 +157,7 @@ function Chat() {
       {/* Vùng Chat chính */}
       <div className="flex-1 flex flex-col relative">
         <header className="h-16 bg-white border-b flex items-center px-8 shadow-sm justify-between">
-          <span className="font-bold text-blue-900">Hỗ trợ đào tạo & Quản lý sinh viên</span>
+          <span className="font-bold text-blue-900">Lịch học tuần này của bạn.</span>
           <div className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">Hệ thống sẵn sàng</div>
         </header>
 
@@ -133,7 +178,7 @@ function Chat() {
                 )}
               </div>
 
-              {msg.role === 'user' && <User size={20} className="text-gray-400 mt-1" />}
+              {msg.role === 'user' && <User size={20} className="text-blue-600 mt-1" />}
             </div>
           ))}
 

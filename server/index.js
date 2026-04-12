@@ -17,7 +17,13 @@ const PORT = process.env.PORT || 3001;
 
 // CORS - Cho phép frontend kết nối
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'], // Vite dev + production
+  origin: (origin, callback) => {
+    // Allow server-to-server tools (no Origin) and localhost dev ports.
+    if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
 }));
 
@@ -53,15 +59,15 @@ async function startServer() {
 
     // Khởi động server
     app.listen(PORT, () => {
-      console.log('🚀 ================================');
-      console.log(`🚀 UTH Chatbot Server`);
-      console.log(`🚀 Port: ${PORT}`);
-      console.log(`🚀 API: http://localhost:${PORT}/api`);
-      console.log(`🚀 Health: http://localhost:${PORT}/api/health`);
-      console.log('🚀 ================================');
+      console.log(' ================================');
+      console.log(` UTH Chatbot Server`);
+      console.log(` Port: ${PORT}`);
+      console.log(` API: http://localhost:${PORT}/api`);
+      console.log(` Health: http://localhost:${PORT}/api/health`);
+      console.log(' ================================');
     });
   } catch (error) {
-    console.error('❌ Không thể khởi động server:', error);
+    console.error('Không thể khởi động server:', error);
     process.exit(1);
   }
 }

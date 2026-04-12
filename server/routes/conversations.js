@@ -107,7 +107,7 @@ router.get('/:id', async (req, res) => {
       messages: parsedMessages
     });
   } catch (error) {
-    console.error('❌ Lỗi lấy chi tiết conversation:', error);
+    console.error(' Lỗi lấy chi tiết conversation:', error);
     res.status(500).json({ success: false, message: 'Lỗi server.' });
   }
 });

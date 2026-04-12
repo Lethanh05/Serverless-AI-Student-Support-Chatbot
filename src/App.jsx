@@ -4,7 +4,7 @@ import Chat from './pages/Chat';
 
 // COMPONENT AUTH GUARD (Người gác cổng)
 // Nhiệm vụ: Kiểm tra xem user có token chưa. Chưa có thì đuổi về trang Login.
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children }) => { // Lấy token từ trình duyết
   // Lấy token từ trình duyệt
   const token = localStorage.getItem('token');
   
@@ -20,7 +20,7 @@ const ProtectedRoute = ({ children }) => {
 
 // COMPONENT CHÍNH
 // Nhiệm vụ: Khai báo các đường dẫn (Router) của ứng dụng
-export default function App() {
+export default function App() { // Sử dụng BrowserRouter để quản lý các tuyến đường trong ứng dụng, Routes để định nghĩa các tuyến đường và Route để xác định thành phần nào sẽ được hiển thị cho mỗi tuyến đướng
   return (
     <BrowserRouter>
       <Routes>

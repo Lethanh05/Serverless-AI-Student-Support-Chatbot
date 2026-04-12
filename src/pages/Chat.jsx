@@ -38,7 +38,7 @@ const createNewChat = () => { // Hàm để tạo một đoạn chat mới, sẽ
   // Tìm bảng lịch học đầu tiên (hoặc cuối cùng) trong danh sách tin nhắn cũ
   const firstSchedule = messages.find(msg => msg.type === 'TABLE');
   
-  const newStartMessages = [ 
+  const newStartMessages = [  // Tin nhắn chào mừng mới khi tạo đoạn chat mới, có thể tùy chỉnh lại nội dung để phù hợp với ngữ cảnh hơn
     { role: 'bot', text: 'Đã làm mới đoạn chat! Bạn có thể đặt câu hỏi mới', type: 'TEXT' }
   ];
 
@@ -47,8 +47,8 @@ const createNewChat = () => { // Hàm để tạo một đoạn chat mới, sẽ
     newStartMessages.push(firstSchedule);
   }
 
-  setMessages(newStartMessages);
-  setHeaderTitle('Lịch học tuần này của bạn.');
+  setMessages(newStartMessages); // Cập nhật state messages với mảng tin nhắn mới, bắt đầu bằng tin nhắn chào mừng và có thể kèm theo bảng lịch học nếu tìm thấy
+  setHeaderTitle('Lịch học tuần này của bạn.'); // Reset tiêu đề header về mặc định khi tạo đoạn chat mới
   setInput('');
 };
 
@@ -68,7 +68,7 @@ const createNewChat = () => { // Hàm để tạo một đoạn chat mới, sẽ
     setTimeout(() => { // Giả lập thời gian phản hồi của chatbot, sau 1 giây sẽ trả lời dựa trên nội dung câu hỏi của người dùng
       setIsLoading(false);  // Kết thúc trạng thái tải, cho phép hiển thị câu trả lời của chatbot
       if (input.includes("lịch học")) { // Nếu câu hỏi của người dùng có chứa từ "lịch học", chatbot sẽ trả lời bằng một bảng lịch học mẫu
-        setMessages(prev => [...prev, {
+        setMessages(prev => [...prev, { // Thêm tin nhắn mới vào mảng messages, với vai trò là bot, loại là bảng và dữ liệu mẫu cho lịch học
           role: 'bot',
           text: 'Đây là lịch học tuần này của Bạn:',
           type: 'TABLE',
@@ -84,7 +84,7 @@ const createNewChat = () => { // Hàm để tạo một đoạn chat mới, sẽ
           type: 'TEXT'
         }]);
       }
-    }, 1000);
+    }, 1000); // Thời gian giả lập 1 giây để chatbot "xử lý" câu hỏi và trả lời, tạo cảm giác thực tế hơn khi tương tác với chatbot
   };
 
   return ( // Container chính của trang Chat, sử dụng Flexbox để chia thành hai phần: sidebar bên trái và vùng chat chính bên phải

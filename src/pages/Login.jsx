@@ -13,12 +13,12 @@ export default function Login() {
     // Giả lập kiểm tra: Chỉ cần nhập đủ MSSV và Password là cho qua
     if (mssv.trim() !== '' && password.trim() !== '') {
       // 1. Lưu một token giả vào localStorage của trình duyệt
-      localStorage.setItem('token', 'uth-fake-jwt-token');
+      localStorage.setItem('token', 'uth-fake-jwt-token'); // Lưu một token giả vào localStorage để đánh dấu rằng người dùng đã đăng nhập thành công. Trong thực tế, token này sẽ được trả về từ server sau khi xác thực thành công và có thể chứa thông tin mã hóa về người dùng.
       
       // 2. Điều hướng người dùng sang trang Chat
-      navigate('/chat');
+      navigate('/chat'); // Điều hướng đến đường dẫn /chat, nơi có component Chat được bảo vệ bởi ProtectedRoute trong App.jsx
     } else {
-      alert("Vui lòng nhập đầy đủ MSSV và Mật khẩu!");
+      alert("Vui lòng nhập đầy đủ MSSV và Mật khẩu!"); // Hiển thị cảnh báo nếu MSSV hoặc mật khẩu bị bỏ trống, yêu cầu người dùng nhập đầy đủ thông tin để đăng nhập
     }
   };
 
@@ -47,7 +47,7 @@ export default function Login() {
                 }
               }}
               className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" // Các lớp Tailwind CSS để tạo kiểu cho ô input
-              placeholder="Nhập MSSV của bạn..."
+              placeholder="Nhập MSSV của bạn..." // Placeholder hiển thị khi ô input rỗng, gợi ý người dùng nhập MSSV
             />
           </div>
 

@@ -8,9 +8,7 @@ require('dotenv').config();
 // Tạo Connection Pool (tối ưu cho production/cloud)
 let pool;
 
-/**
- * Khởi tạo database: tạo DB, tạo bảng, seed dữ liệu mẫu
- */
+
 async function initDatabase() {
   // 1. Kết nối MySQL (chưa chọn database) để tạo database
   const tempConnection = await mysql.createConnection({
@@ -43,7 +41,7 @@ async function initDatabase() {
   // 4. Seed dữ liệu sinh viên mẫu
   await seedStudents();
 
-  console.log('✅ Database đã sẵn sàng!');
+  console.log('Database đã sẵn sàng!');
 }
 
 /**
@@ -96,8 +94,8 @@ async function createTables() {
  */
 async function seedStudents() {
   const students = [
-    { mssv: '21110001', password: '123456', display_name: 'Nguyễn Văn A', faculty: 'Công nghệ Thông tin' },
-    { mssv: '21110002', password: '123456', display_name: 'Trần Thị B', faculty: 'Công nghệ Thông tin' },
+    { mssv: '21110001', password: '123456', display_name: 'Lê Quang Thạnh', faculty: 'Công nghệ Thông tin' },
+    { mssv: '21110002', password: '123456', display_name: 'Nguyễn Văn Test', faculty: 'Công nghệ Thông tin' },
   ];
 
   for (const student of students) {

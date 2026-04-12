@@ -53,7 +53,7 @@ router.post('/', async (req, res) => {
       [conversationId, 'bot', 'Chào bạn! Mình là trợ lý ảo UTH. Bạn cần hỗ trợ gì?', 'TEXT']
     );
 
-    // Lấy conversation vừa tạo
+    
     const [rows] = await pool.execute(
       'SELECT * FROM conversations WHERE id = ?',
       [conversationId]
@@ -65,15 +65,12 @@ router.post('/', async (req, res) => {
       conversation: rows[0]
     });
   } catch (error) {
-    console.error('❌ Lỗi tạo conversation:', error);
+    console.error(' Lỗi tạo conversation:', error);
     res.status(500).json({ success: false, message: 'Lỗi server.' });
   }
 });
 
-/**
- * GET /api/conversations/:id
- * Lấy chi tiết 1 cuộc hội thoại (tất cả messages)
- */
+
 router.get('/:id', async (req, res) => {
   try {
     const pool = getPool();

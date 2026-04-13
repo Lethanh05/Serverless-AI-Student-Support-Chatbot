@@ -262,6 +262,7 @@ function Chat() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate">{student?.display_name || 'Sinh viên'}</p>
               <p className="text-xs text-blue-300">{student?.mssv || ''} - UTH</p>
+              <p className="text-xs text-blue-200 truncate">{student?.faculty || 'Ngành: chưa cập nhật từ portal'}</p>
             </div>
             <button
               onClick={handleLogout}

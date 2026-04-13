@@ -5,41 +5,160 @@ const express = require('express');
 const authenticateToken = require('../middleware/auth');
 const { getPool } = require('../database');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-
+const axios = require('axios');
 const router = express.Router();
-
+const { decrypt } = require('../crypto');
 // Tất cả routes đều yêu cầu đăng nhập
 router.use(authenticateToken);
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getGeminiStatusCode(error) {
+  const message = String(error?.message || '');
+  const match = message.match(/\[(\d{3})\s/);
+  return match ? Number(match[1]) : null;
+}
+
+function isRetryableGeminiError(error) {
+  const statusCode = getGeminiStatusCode(error);
+  return statusCode === 429 || statusCode === 503;
+}
+
+async function fetchAvailableGeminiModels(apiKey) {
+  try {
+    const res = await axios.get('https://generativelanguage.googleapis.com/v1beta/models', {
+      params: { key: apiKey },
+      timeout: 8000
+    });
+
+    const models = Array.isArray(res?.data?.models) ? res.data.models : [];
+    return models
+      .filter((m) => {
+        const name = String(m?.name || '');
+        const methods = Array.isArray(m?.supportedGenerationMethods)
+          ? m.supportedGenerationMethods
+          : [];
+        return name.includes('gemini') && methods.includes('generateContent');
+      })
+      .map((m) => String(m.name || '').replace('models/', ''))
+      .filter(Boolean);
+  } catch (error) {
+    console.warn('Không lấy được danh sách model Gemini, sẽ dùng fallback tĩnh:', error.message);
+    return [];
+  }
+}
+
+async function generateWithGeminiFallback(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('MISSING_GEMINI_API_KEY');
+  }
+
+  const discoveredModels = await fetchAvailableGeminiModels(apiKey);
+  const preferredModels = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-pro'
+  ];
+
+  const mergedCandidates = [...preferredModels, ...discoveredModels];
+  const modelCandidates = Array.from(new Set(mergedCandidates)).filter((name) => {
+    if (!discoveredModels.length) return true;
+    return discoveredModels.includes(name);
+  });
+
+  if (!modelCandidates.length) {
+    throw new Error('NO_AVAILABLE_GEMINI_MODEL');
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  let lastError = null;
+  const maxRetriesPerModel = 2;
+
+  for (const modelName of modelCandidates) {
+    for (let attempt = 0; attempt <= maxRetriesPerModel; attempt += 1) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+      } catch (error) {
+        lastError = error;
+        const retryable = isRetryableGeminiError(error);
+        const statusCode = getGeminiStatusCode(error);
+        console.error(
+          `Gemini fallback thất bại với model ${modelName} (lần ${attempt + 1}/${maxRetriesPerModel + 1}, status ${statusCode || 'unknown'}):`,
+          error.message
+        );
+
+        if (!retryable || attempt === maxRetriesPerModel) {
+          break;
+        }
+
+        const backoffMs = 700 * (attempt + 1);
+        await sleep(backoffMs);
+      }
+    }
+  }
+
+  throw lastError || new Error('Không thể gọi Gemini với tất cả model fallback');
+}
+
+function formatScheduleFallback(rawPortalData) {
+  if (!Array.isArray(rawPortalData) || rawPortalData.length === 0) {
+    return 'Hiện tại mình chưa tìm thấy lịch học/lịch thi nào cho bạn trong thời gian này.';
+  }
+
+  const rows = rawPortalData.slice(0, 15).map((item, index) => {
+    const subject = item.tenHocPhan || item.tenMonHoc || item.monHoc || 'Chưa rõ môn học';
+    const fromTime = item.gioBatDau || item.tuGio || item.fromTime || '--:--';
+    const toTime = item.gioKetThuc || item.denGio || item.toTime || '--:--';
+    const room = item.phongHoc || item.phong || item.room || 'Chưa có phòng';
+    return `${index + 1}. ${subject} | ${fromTime} - ${toTime} | Phòng: ${room}`;
+  });
+
+  return `Lịch học của bạn là:\n${rows.join('\n')}`;
+}
+
 /**
- * Hàm giả lập gọi API từ UTH Portal để lấy dữ liệu theo MSSV
- * (Sau này bạn có thể thay bằng axios.get('https://api.uth.edu.vn/...'))
- * @param {string} mssv - Mã số sinh viên
+ * Hàm gọi API thực tế từ UTH Portal để lấy dữ liệu lịch học/thi
  */
-async function fetchDataFromPortal(mssv, type) {
-  // Giả lập độ trễ mạng khi gọi API
-  await new Promise(resolve => setTimeout(resolve, 500));
+async function fetchDataFromPortal(username, password, dateStr) {
+  try {
+    // 1. Tạo fake captcha và đăng nhập lấy Token
+    const fakeCaptcha = Math.random().toString(36).substring(2, 15);
+    const loginUrl = `https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response=${fakeCaptcha}`;
+    
+    const loginRes = await axios.post(loginUrl, {
+      username: username,
+      password: password // Yêu cầu: Cần lấy mật khẩu portal của SV từ DB hoặc yêu cầu cung cấp
+    });
 
-  // Dữ liệu mock (tưởng tượng portal trả về như thế này)
-  if (type === 'schedule') {
-    return [
-      { date: '14/4/2026', subject: 'Lập trình Web', room: 'C.201', time: '07:30' },
-      { date: '15/4/2026', subject: 'Mạng máy tính', room: 'A.105', time: '13:00' },
-      { date: '16/4/2026', subject: 'Cơ sở dữ liệu', room: 'B.302', time: '09:00' },
-      { date: '18/4/2026', subject: 'Trí tuệ nhân tạo', room: 'C.305', time: '13:00' },
-    ];
+    const token = loginRes.data.token;
+    if (!token) throw new Error("Không thể lấy token, sai tài khoản/mật khẩu");
+
+    // 2. Lấy dữ liệu lịch học dựa trên ngày (Mặc định lấy ngày hiện tại nếu không truyền)
+    const targetDate = dateStr || new Date().toISOString().split('T')[0];
+    const scheduleUrl = `https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date=${targetDate}`;
+    
+    const scheduleRes = await axios.get(scheduleUrl, {
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "Referer": "https://portal.ut.edu.vn/calendar",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "accept": "application/json, text/plain, */*"
+      }
+    });
+
+    // Trả về dữ liệu JSON thô của portal
+    return scheduleRes.data.body || [];
+  } catch (error) {
+    console.error("Lỗi khi gọi API Portal:", error.message);
+    throw error;
   }
-
-  if (type === 'exam') {
-    // Trả về danh sách bài kiểm tra / lịch thi sắp tới
-    return [
-      { date: '20/04/2026', subject: 'Kiểm tra Giữa kỳ - Lập trình Web', room: 'H.101', time: '08:00' },
-      { date: '22/04/2026', subject: 'Kiểm tra Giữa kỳ - Mạng máy tính', room: 'H.202', time: '13:30' },
-      { date: '25/04/2026', subject: 'Thi Cuối kỳ - Cơ sở dữ liệu', room: 'H.305', time: '07:30' },
-    ];
-  }
-
-  return [];
 }
 
 /**
@@ -50,39 +169,73 @@ async function fetchDataFromPortal(mssv, type) {
  */
 async function generateBotResponse(userMessage, studentInfo) {
   const lowerMsg = userMessage.toLowerCase();
+  const studentName = studentInfo.display_name || `Sinh viên ${studentInfo.mssv}`;
+  const studentFaculty = studentInfo.faculty || 'chưa cập nhật ngành';
+
+  if (
+    lowerMsg.includes('mình là ai') ||
+    lowerMsg.includes('tôi là ai') ||
+    lowerMsg.includes('tên gì') ||
+    lowerMsg.includes('thông tin cá nhân') ||
+    lowerMsg.includes('ngành gì')
+  ) {
+    return {
+      text: `Bạn là ${studentName} (MSSV: ${studentInfo.mssv}), ngành ${studentFaculty}. Mình chỉ hiển thị thông tin đúng với tài khoản bạn đang đăng nhập.`,
+      type: 'TEXT',
+      data: null
+    };
+  }
   
   // ==========================================================
   // 1. XỬ LÝ CÁC TỪ KHÓA ĐẶC BIỆT CẦN DỮ LIỆU TỪ PORTAL
   // ==========================================================
 
-  // A. Lịch học / Thời khóa biểu
-  if (lowerMsg.includes('lịch học') || lowerMsg.includes('thời khóa biểu')) {
+    // A. Lịch học / Thời khóa biểu / Lịch thi
+  if (lowerMsg.includes('lịch học') || lowerMsg.includes('thời khóa biểu') || lowerMsg.includes('lịch thi')) {
     try {
-      // Gọi "API" lấy lịch học dựa trên mssv của sinh viên đang chat
-      const scheduleData = await fetchDataFromPortal(studentInfo.mssv, 'schedule');
-      
-      return {
-        text: `Đây là lịch học tuần này của bạn (MSSV: ${studentInfo.mssv}), được lấy từ UTH Portal:`,
-        type: 'TABLE',
-        data: scheduleData,
-      };
-    } catch (error) {
-      return { text: 'Lỗi khi lấy dữ liệu từ Portal. Vui lòng thử lại sau!', type: 'TEXT', data: null };
-    }
-  }
+      if (!studentInfo.decryptedPassword) {
+        return {
+          text: 'Mình chưa thể xác thực Portal cho tài khoản này. Bạn vui lòng đăng xuất rồi đăng nhập lại để đồng bộ thông tin Portal nhé.',
+          type: 'TEXT',
+          data: null
+        };
+      }
 
-  // B. Bài kiểm tra / Lịch thi
-  if (lowerMsg.includes('kiểm tra') || lowerMsg.includes('lịch thi')) {
-    try {
-      const examData = await fetchDataFromPortal(studentInfo.mssv, 'exam');
-      
+      // Dùng studentInfo.password (pass đăng nhập chatbot) để đăng nhập Portal
+      const rawPortalData = await fetchDataFromPortal(studentInfo.mssv, studentInfo.decryptedPassword, null);
+
+      // Đưa dữ liệu thô cho Gemini để xử lý và tạo khuôn mẫu hiển thị
+      const prompt = `Bạn là trợ lý ảo hỗ trợ sinh viên của Đại học Giao thông Vận tải TP.HCM (UTH).
+        Sinh viên ${studentName} (MSSV: ${studentInfo.mssv}, ngành: ${studentFaculty}) vừa hỏi về lịch học/lịch thi.
+        Dưới đây là dữ liệu JSON thô lấy từ Portal của trường:
+        ${JSON.stringify(rawPortalData)}
+
+        Nhiệm vụ của bạn:
+        1. Đọc hiểu dữ liệu JSON trên.
+        2. Trích xuất và định dạng lại thành một bảng Markdown thật đẹp mắt hoặc danh sách liệt kê rõ ràng.
+        3. Các cột/thông tin cần thiết: Tên môn học, Thời gian (Từ giờ - Đến giờ), Phòng học, Giảng viên (nếu có).
+        4. Nếu dữ liệu JSON trống, hãy thông báo một cách thân thiện là hiện tại không có lịch học/lịch thi nào được tìm thấy.`;
+
+      let formattedResponse;
+      try {
+        formattedResponse = await generateWithGeminiFallback(prompt);
+      } catch (geminiError) {
+        console.error('Gemini lỗi khi format lịch, dùng fallback local:', geminiError.message);
+        formattedResponse = formatScheduleFallback(rawPortalData);
+      }
+
       return {
-        text: `Nhắc nhở: Bạn có ${examData.length} bài kiểm tra/thi sắp tới. Hãy chuẩn bị kỹ nhé!`,
-        type: 'TABLE',
-        data: examData,
+        text: formattedResponse,
+        type: 'TEXT',
+        data: null,
       };
     } catch (error) {
-      return { text: 'Lỗi khi lấy dữ liệu từ Portal. Vui lòng thử lại sau!', type: 'TEXT', data: null };
+      console.error("Lỗi Portal:", error);
+      return { 
+        text: 'Lỗi khi kết nối Portal. Có thể mật khẩu đăng nhập Chatbot của bạn không khớp với mật khẩu Portal hiện tại!', 
+        type: 'TEXT', 
+        data: null 
+      };
     }
   }
 
@@ -90,27 +243,14 @@ async function generateBotResponse(userMessage, studentInfo) {
   // 2. TÍCH HỢP GEMINI AI CHO CÁC CÂU HỎI KHÁC
   // ==========================================================
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("Chưa cấu hình GEMINI_API_KEY trong .env");
-      return {
-        text: "Hệ thống AI chưa được cấu hình khóa API. Vui lòng liên hệ quản trị viên.",
-        type: 'TEXT',
-        data: null
-      };
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
-    
     // Prompt ngữ cảnh cho AI biết nó đang nói chuyện với ai
     const prompt = `Bạn là trợ lý ảo hỗ trợ sinh viên của trường Đại học Giao thông Vận tải TP.HCM (UTH). 
-Người đang hỏi bạn là sinh viên tên ${studentInfo.display_name} (MSSV: ${studentInfo.mssv}).
-Hãy trả lời thân thiện, ngắn gọn, và xưng hô "mình" và "bạn". 
+Người đang hỏi bạn là sinh viên tên ${studentName} (MSSV: ${studentInfo.mssv}, ngành: ${studentFaculty}).
+Bạn chỉ được phép trả thông tin cá nhân của chính sinh viên đang đăng nhập này. Nếu người dùng hỏi thông tin của sinh viên khác, hãy từ chối lịch sự và yêu cầu họ đăng nhập tài khoản tương ứng.
+Hãy trả lời thân thiện, ngắn gọn, đúng trọng tâm và xưng hô "mình" và "bạn". Chỉ chào hỏi lần đầu tiên và không cần nhắc lại tên/MSSV ở các câu trả lời sau.
 Câu hỏi của sinh viên: "${userMessage}"`;
-    
-    const result = await model.generateContent(prompt);
-    const textResponse = result.response.text();
+
+    const textResponse = await generateWithGeminiFallback(prompt);
 
     return { 
       text: textResponse, 
@@ -120,8 +260,18 @@ Câu hỏi của sinh viên: "${userMessage}"`;
 
   } catch (error) {
     console.error('Lỗi Gemini API:', error);
+    const fallbackByProfile = `Mình đang tạm lỗi AI, nhưng mình vẫn biết bạn là ${studentName} (MSSV: ${studentInfo.mssv}, ngành: ${studentFaculty}). Bạn gửi lại câu hỏi sau ít phút nhé.`;
+
+    if (String(error.message || '').includes('MISSING_GEMINI_API_KEY')) {
+      return {
+        text: 'Hệ thống AI chưa được cấu hình GEMINI_API_KEY. Vui lòng liên hệ quản trị viên để bật trợ lý AI.',
+        type: 'TEXT',
+        data: null
+      };
+    }
+
     return {
-      text: "Xin lỗi, hiện tại tui đang bị bịnh hoặc không vui. Vui lòng thử lại sau nhé!",
+      text: fallbackByProfile,
       type: 'TEXT',
       data: null,
     };
@@ -160,11 +310,18 @@ router.post('/:id/messages', async (req, res) => {
 
     // 2. Lấy thông tin sinh viên để truyền vào Bot (để Bot biết tên/MSSV)
     const [studentRows] = await pool.execute(
-      'SELECT mssv, display_name FROM students WHERE id = ?',
+      'SELECT mssv, display_name, faculty, password FROM students WHERE id = ?',
       [req.student.id]
     );
     const studentInfo = studentRows[0];
-
+    
+    // GIẢI MÃ MẬT KHẨU TỪ DATABASE ĐỂ ĐƯA CHO PORTAL
+    try {
+      studentInfo.decryptedPassword = decrypt(studentInfo.password);
+    } catch (err) {
+      console.error("Lỗi giải mã mật khẩu:", err);
+      // Xử lý nếu mật khẩu cũ trong DB chưa được mã hóa bằng chuẩn này
+    }
     // 3. Lưu tin nhắn của user
     const [userResult] = await pool.execute(
       'INSERT INTO messages (conversation_id, role, text, type) VALUES (?, ?, ?, ?)',

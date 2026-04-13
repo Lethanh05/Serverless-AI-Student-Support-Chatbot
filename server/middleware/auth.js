@@ -30,10 +30,11 @@ function authenticateToken(req, res, next) {
       id: decoded.id,
       mssv: decoded.mssv,
       display_name: decoded.display_name,
+      faculty: decoded.faculty || null,
     };
     
     next(); // Cho phép đi tiếp
-  } catch (error) {
+  } catch {
     return res.status(403).json({ 
       success: false, 
       message: 'Token không hợp lệ hoặc đã hết hạn.' 

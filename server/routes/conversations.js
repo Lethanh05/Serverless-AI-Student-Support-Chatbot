@@ -47,10 +47,21 @@ router.post('/', async (req, res) => {
 
     const conversationId = result.insertId;
 
+    const [studentRows] = await pool.execute(
+      'SELECT display_name, faculty FROM students WHERE id = ?',
+      [req.student.id]
+    );
+
+    const studentName = studentRows[0]?.display_name || req.student.display_name || 'bạn';
+    const studentFaculty = studentRows[0]?.faculty || req.student.faculty;
+    const welcomeText = studentFaculty
+      ? `Chào ${studentName}! Mình là trợ lý ảo UTH. Mình đã nhận diện bạn thuộc ngành ${studentFaculty}. Bạn cần hỗ trợ gì?`
+      : `Chào ${studentName}! Mình là trợ lý ảo UTH. Bạn cần hỗ trợ gì?`;
+
     // Thêm tin nhắn chào mừng từ bot
     await pool.execute(
       'INSERT INTO messages (conversation_id, role, text, type) VALUES (?, ?, ?, ?)',
-      [conversationId, 'bot', 'Chào bạn! Mình là trợ lý ảo UTH. Bạn cần hỗ trợ gì?', 'TEXT']
+      [conversationId, 'bot', welcomeText, 'TEXT']
     );
 
     

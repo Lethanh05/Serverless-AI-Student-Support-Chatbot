@@ -56,7 +56,7 @@ export default function Login() {
       <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
         {/* Tiêu đề Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-blue-700">UTH PORTAL</h1>
+          <h1 className="text-3xl font-bold text-blue-700">UTH CHATBOT</h1>
           <p className="text-gray-500 mt-2">Hệ thống hỗ trợ sinh viên</p>
         </div>
 
@@ -105,7 +105,7 @@ export default function Login() {
         {/* Gợi ý tài khoản test */}
         <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-xs text-blue-600 text-center font-medium">
-            Tài khoản test: MSSV <strong>21110001</strong> / Mật khẩu <strong>123456</strong>
+            <strong>Chatbot hỗ trợ sinh viên & Hiển thị lịch học và kiểm tra</strong>
           </p>
         </div>
       </div>

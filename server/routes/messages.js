@@ -175,7 +175,6 @@ async function generateBotResponse(userMessage, studentInfo) {
   if (
     lowerMsg.includes('mình là ai') ||
     lowerMsg.includes('tôi là ai') ||
-    lowerMsg.includes('tên gì') ||
     lowerMsg.includes('thông tin cá nhân') ||
     lowerMsg.includes('ngành gì')
   ) {
@@ -212,9 +211,10 @@ async function generateBotResponse(userMessage, studentInfo) {
 
         Nhiệm vụ của bạn:
         1. Đọc hiểu dữ liệu JSON trên.
-        2. Trích xuất và định dạng lại thành một bảng Markdown thật đẹp mắt hoặc danh sách liệt kê rõ ràng.
-        3. Các cột/thông tin cần thiết: Tên môn học, Thời gian (Từ giờ - Đến giờ), Phòng học, Giảng viên (nếu có).
-        4. Nếu dữ liệu JSON trống, hãy thông báo một cách thân thiện là hiện tại không có lịch học/lịch thi nào được tìm thấy.`;
+        - Nếu phòng là E-learning là học trực tuyến, giảng viên cho bài tập về nhà, tách riêng với các môn học có phòng học cụ thể.
+        2. Trích xuất và định dạng lại theo ngày có lịch học. Ngày có lịch học thì ghi lịch học ngày đó rồi xuống dòng ghi ngày có lịch học tiếp theo. phân chia logic, đẹp mắt, không bị lệch các cột. 
+        3. Các cột/thông tin cần thiết: Tên môn học, mã học phần, tiết học, Thời gian (Từ giờ - Đến giờ), Phòng học.
+        4. Nếu dữ liệu JSON trống, hãy thông báo một cách thân thiện là hiện tại không có lịch học nào được tìm thấy.`;
 
       let formattedResponse;
       try {

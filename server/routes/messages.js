@@ -14,98 +14,169 @@ router.use(authenticateToken);
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-function getGeminiStatusCode(error) {
-  const message = String(error?.message || '');
-  const match = message.match(/\[(\d{3})\s/);
-  return match ? Number(match[1]) : null;
-}
-
-function isRetryableGeminiError(error) {
-  const statusCode = getGeminiStatusCode(error);
-  return statusCode === 429 || statusCode === 503;
-}
-
-async function fetchAvailableGeminiModels(apiKey) {
-  try {
-    const res = await axios.get('https://generativelanguage.googleapis.com/v1beta/models', {
-      params: { key: apiKey },
-      timeout: 8000
-    });
-
-    const models = Array.isArray(res?.data?.models) ? res.data.models : [];
-    return models
-      .filter((m) => {
-        const name = String(m?.name || '');
-        const methods = Array.isArray(m?.supportedGenerationMethods)
-          ? m.supportedGenerationMethods
-          : [];
-        return name.includes('gemini') && methods.includes('generateContent');
-      })
-      .map((m) => String(m.name || '').replace('models/', ''))
-      .filter(Boolean);
-  } catch (error) {
-    console.warn('Không lấy được danh sách model Gemini, sẽ dùng fallback tĩnh:', error.message);
-    return [];
-  }
-}
-
+//TEST FALLBACK MỚI
+/**
+ * Gọi Gemini API với cơ chế Fallback tuần tự qua các model ưu tiên.
+ * Đơn giản hóa: Bỏ qua việc gọi API lấy danh sách model, chỉ dùng mảng tĩnh.
+ * Tăng thời gian chờ (delay) để tránh lỗi 429/503 từ Google.
+ */
 async function generateWithGeminiFallback(prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('MISSING_GEMINI_API_KEY');
   }
 
-  const discoveredModels = await fetchAvailableGeminiModels(apiKey);
-  const preferredModels = [
+  // Khởi tạo SDK một lần
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  
+  const modelsToTry = [
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-pro'
+    'gemini-3-flash',
+    'gemini-3.1-flash-lite',
   ];
 
-  const mergedCandidates = [...preferredModels, ...discoveredModels];
-  const modelCandidates = Array.from(new Set(mergedCandidates)).filter((name) => {
-    if (!discoveredModels.length) return true;
-    return discoveredModels.includes(name);
-  });
-
-  if (!modelCandidates.length) {
-    throw new Error('NO_AVAILABLE_GEMINI_MODEL');
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
   let lastError = null;
-  const maxRetriesPerModel = 2;
 
-  for (const modelName of modelCandidates) {
-    for (let attempt = 0; attempt <= maxRetriesPerModel; attempt += 1) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        return result.response.text();
-      } catch (error) {
-        lastError = error;
-        const retryable = isRetryableGeminiError(error);
-        const statusCode = getGeminiStatusCode(error);
-        console.error(
-          `Gemini fallback thất bại với model ${modelName} (lần ${attempt + 1}/${maxRetriesPerModel + 1}, status ${statusCode || 'unknown'}):`,
-          error.message
-        );
+  // Lặp qua từng model trong danh sách
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`Đang thử gọi Gemini với model: ${modelName}...`);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      
+      // Gọi AI
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      
+      // Nếu thành công, trả về kết quả ngay lập tức
+      console.log(`✅ Gọi thành công với model: ${modelName}`);
+      return text;
 
-        if (!retryable || attempt === maxRetriesPerModel) {
-          break;
-        }
+    } catch (error) {
+      lastError = error;
+      const statusMatch = String(error.message).match(/\[(\d{3})\s/);
+      const statusCode = statusMatch ? Number(statusMatch[1]) : 'unknown';
 
-        const backoffMs = 700 * (attempt + 1);
-        await sleep(backoffMs);
+      console.warn(`❌ Model ${modelName} thất bại (Status: ${statusCode}): ${error.message.substring(0, 100)}...`);
+
+      // Nếu lỗi là 404 (Model không tồn tại/chưa mở), lập tức thử model tiếp theo (không cần chờ)
+      if (statusCode === 404) {
+        continue; 
       }
+
+      // Nếu là lỗi 503 (Quá tải) hoặc 429 (Rate limit), dừng lại một chút trước khi thử model tiếp theo
+      if (statusCode === 503 || statusCode === 429) {
+        console.warn('Đang gặp lỗi quá tải/rate limit. Đợi 2 giây trước khi thử model khác...');
+        await sleep(2000); 
+        continue;
+      }
+      
+      // Với các lỗi khác (ví dụ: sai API Key, lỗi cú pháp), có thể thử tiếp model khác hoặc dừng hẳn tùy logic của bạn.
+      // Ở đây ta vẫn cho thử tiếp các model dự phòng.
     }
   }
 
-  throw lastError || new Error('Không thể gọi Gemini với tất cả model fallback');
+  // Nếu vòng lặp kết thúc mà vẫn chưa return được text, tức là tất cả model đều thất bại.
+  throw lastError || new Error('Tất cả model Gemini đều phản hồi thất bại.');
 }
+
+// Giữ lại hàm sleep đơn giản này nếu bạn đã xóa ở trên
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// GET ERROR FALLBACK CŨ
+// function getGeminiStatusCode(error) {
+//   const message = String(error?.message || '');
+//   const match = message.match(/\[(\d{3})\s/);
+//   return match ? Number(match[1]) : null;
+// }
+
+// function isRetryableGeminiError(error) {
+//   const statusCode = getGeminiStatusCode(error);
+//   return statusCode === 429 || statusCode === 503;
+// }
+
+// async function fetchAvailableGeminiModels(apiKey) {
+//   try {
+//     const res = await axios.get('https://generativelanguage.googleapis.com/v1beta/models', {
+//       params: { key: apiKey },
+//       timeout: 8000
+//     });
+
+//     const models = Array.isArray(res?.data?.models) ? res.data.models : [];
+//     return models
+//       .filter((m) => {
+//         const name = String(m?.name || '');
+//         const methods = Array.isArray(m?.supportedGenerationMethods)
+//           ? m.supportedGenerationMethods
+//           : [];
+//         return name.includes('gemini') && methods.includes('generateContent');
+//       })
+//       .map((m) => String(m.name || '').replace('models/', ''))
+//       .filter(Boolean);
+//   } catch (error) {
+//     console.warn('Không lấy được danh sách model Gemini, sẽ dùng fallback tĩnh:', error.message);
+//     return [];
+//   }
+// }
+
+// async function generateWithGeminiFallback(prompt) {
+//   const apiKey = process.env.GEMINI_API_KEY;
+//   if (!apiKey) {
+//     throw new Error('MISSING_GEMINI_API_KEY');
+//   }
+
+//   const discoveredModels = await fetchAvailableGeminiModels(apiKey);
+//   const preferredModels = [
+//     'gemini-2.5-flash',
+//    'gemini-2.5-flash-lite',
+//    'gemini-3-flash',
+//    'gemini-3.1-flash-lite',
+//   ];
+
+//   const mergedCandidates = [...preferredModels, ...discoveredModels];
+//   const modelCandidates = Array.from(new Set(mergedCandidates)).filter((name) => {
+//     if (!discoveredModels.length) return true;
+//     return discoveredModels.includes(name);
+//   });
+
+//   if (!modelCandidates.length) {
+//     throw new Error('NO_AVAILABLE_GEMINI_MODEL');
+//   }
+
+//   const genAI = new GoogleGenerativeAI(apiKey);
+//   let lastError = null;
+//   const maxRetriesPerModel = 2;
+
+//   for (const modelName of modelCandidates) {
+//     for (let attempt = 0; attempt <= maxRetriesPerModel; attempt += 1) {
+//       try {
+//         const model = genAI.getGenerativeModel({ model: modelName });
+//         const result = await model.generateContent(prompt);
+//         return result.response.text();
+//       } catch (error) {
+//         lastError = error;
+//         const retryable = isRetryableGeminiError(error);
+//         const statusCode = getGeminiStatusCode(error);
+//         console.error(
+//           `Gemini fallback thất bại với model ${modelName} (lần ${attempt + 1}/${maxRetriesPerModel + 1}, status ${statusCode || 'unknown'}):`,
+//           error.message
+//         );
+
+//         if (!retryable || attempt === maxRetriesPerModel) {
+//           break;
+//         }
+
+//         const backoffMs = 700 * (attempt + 1);
+//         await sleep(backoffMs);
+//       }
+//     }
+//   }
+
+//   throw lastError || new Error('Không thể gọi Gemini với tất cả model fallback');
+// }
 
 function formatScheduleFallback(rawPortalData) {
   if (!Array.isArray(rawPortalData) || rawPortalData.length === 0) {
@@ -205,16 +276,16 @@ async function generateBotResponse(userMessage, studentInfo) {
 
       // Đưa dữ liệu thô cho Gemini để xử lý và tạo khuôn mẫu hiển thị
       const prompt = `Bạn là trợ lý ảo hỗ trợ sinh viên của Đại học Giao thông Vận tải TP.HCM (UTH).
-        Sinh viên ${studentName} (MSSV: ${studentInfo.mssv}, ngành: ${studentFaculty}) vừa hỏi về lịch học/lịch thi.
+        Sinh viên ${studentName} (MSSV: ${studentInfo.mssv}, ngành: ${studentFaculty}) vừa hỏi về lịch học.
+        Chỉ chào lần đầu tiên, sau đó trả lời trực tiếp vào câu hỏi mà không cần chào lại ở các câu trả lời sau.
         Dưới đây là dữ liệu JSON thô lấy từ Portal của trường:
         ${JSON.stringify(rawPortalData)}
-
         Nhiệm vụ của bạn:
-        1. Đọc hiểu dữ liệu JSON trên.
-        - Nếu phòng là E-learning là học trực tuyến, giảng viên cho bài tập về nhà, tách riêng với các môn học có phòng học cụ thể.
-        2. Trích xuất và định dạng lại theo ngày có lịch học. Ngày có lịch học thì ghi lịch học ngày đó rồi xuống dòng ghi ngày có lịch học tiếp theo. phân chia logic, đẹp mắt, không bị lệch các cột. 
-        3. Các cột/thông tin cần thiết: Tên môn học, mã học phần, tiết học, Thời gian (Từ giờ - Đến giờ), Phòng học.
-        4. Nếu dữ liệu JSON trống, hãy thông báo một cách thân thiện là hiện tại không có lịch học nào được tìm thấy.`;
+        1. Đọc hiểu dữ liệu JSON trên. Lọc những thông tin cần thiết để hiển thị lịch học.
+        2. Nếu phòng học là E-learning là học trực tuyến, tách riêng với các môn học có phòng học cụ thể.
+        3. Trích xuất,lọc và lấy những thông tin cần thiết. Định dạng lại thông tin theo ngày có lịch học. Ngày có lịch học thì ghi lịch học ngày đó rồi xuống dòng ghi ngày có lịch học tiếp theo. phân chia logic, đẹp mắt, không bị lệch các cột. 
+        4. Các cột/thông tin cần thiết: Tên môn học, mã học phần, tiết học, Thời gian (Từ giờ - Đến giờ), Phòng học.
+        5. Nếu dữ liệu JSON trống, hãy thông báo một cách thân thiện là hiện tại không có lịch học nào được tìm thấy.`;
 
       let formattedResponse;
       try {
@@ -244,7 +315,7 @@ async function generateBotResponse(userMessage, studentInfo) {
   // ==========================================================
   try {
     // Prompt ngữ cảnh cho AI biết nó đang nói chuyện với ai
-    const prompt = `Bạn là trợ lý ảo hỗ trợ sinh viên của trường Đại học Giao thông Vận tải TP.HCM (UTH). 
+    const prompt = `Bạn là trợ lý ảo hỗ trợ sinh viên của trường Đại học Giao thông Vận tải TP.HCM (UTH). Hãy cập nhật thông tin chính xác về trường. 
 Người đang hỏi bạn là sinh viên tên ${studentName} (MSSV: ${studentInfo.mssv}, ngành: ${studentFaculty}).
 Bạn chỉ được phép trả thông tin cá nhân của chính sinh viên đang đăng nhập này. Nếu người dùng hỏi thông tin của sinh viên khác, hãy từ chối lịch sự và yêu cầu họ đăng nhập tài khoản tương ứng.
 Hãy trả lời thân thiện, ngắn gọn, đúng trọng tâm và xưng hô "mình" và "bạn". Chỉ chào hỏi lần đầu tiên và không cần nhắc lại tên/MSSV ở các câu trả lời sau.

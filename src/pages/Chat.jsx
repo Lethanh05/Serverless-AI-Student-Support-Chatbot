@@ -332,7 +332,7 @@ function Chat() {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-6 bg-white border-t">
+        <div className="p-3 bg-white border-t">
           <div className="max-w-4xl mx-auto relative">
             <input 
               type="text" 
@@ -351,9 +351,13 @@ function Chat() {
               <Send size={20} />
             </button>
           </div>
-          <p className="text-center text-[10px] text-slate-400 mt-3 italic">
-            Dữ liệu được cập nhật trực tiếp từ UTH Portal
+          <p className="text-center text-[10px] text-slate-400 mt-1 italic">
+            Lịch học được cập nhật trực tiếp từ UTH Portal
           </p>
+          <p className="text-center text-[10px] text-slate-400 mt-1 italic">
+            AI Chatbot có thể mắc sai sót, hãy kiểm tra lại thông tin.
+          </p>
+
         </div>
       </div>
     </div>

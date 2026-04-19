@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, History, GraduationCap, Plus, Trash2, LogOut } from 'lucide-react';
+import { Send, User, History, GraduationCap, Plus, Trash2, LogOut, MoreVertical } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ScheduleTable from '../components/RichUI';
 import uthLogo from '../assets/logo/Logo_UTH.png';
@@ -13,7 +13,9 @@ function Chat() {
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [student, setStudent] = useState(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const messagesEndRef = useRef(null);
+  const userMenuRef = useRef(null);
   const navigate = useNavigate();
 
   // Lấy token từ localStorage
@@ -34,11 +36,26 @@ function Chat() {
     scrollToBottom();
   }, [messages, isLoading]);
 
+  useEffect(() => {
+    const closeMenuOnOutsideClick = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', closeMenuOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeMenuOnOutsideClick);
+  }, []);
+
   // Load thông tin sinh viên + danh sách hội thoại khi mount
   useEffect(() => {
     const storedStudent = localStorage.getItem('student');
     if (storedStudent) {
-      setStudent(JSON.parse(storedStudent));
+      const parsedStudent = JSON.parse(storedStudent);
+      if (parsedStudent && typeof parsedStudent.portal_verified === 'undefined') {
+        parsedStudent.portal_verified = 0;
+      }
+      setStudent(parsedStudent);
     }
     loadConversations();
   }, []);
@@ -197,6 +214,44 @@ function Chat() {
   };
 
   /**
+   * Xác thực Portal theo Option 2
+   */
+  const handleAuthPortal = async () => {
+    setIsLoading(true);
+    setShowUserMenu(false);
+
+    try {
+      const res = await fetch(`${API_URL}/portal/authenticate`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        window.alert(data.message || 'Xác thực Portal thất bại.');
+        return;
+      }
+
+      const serverStudent = data.student || {};
+      const updatedStudent = {
+        ...student,
+        mssv: serverStudent.mssv || data.mssv || student?.mssv,
+        display_name: serverStudent.display_name || data.ho_ten || student?.display_name,
+        faculty: serverStudent.faculty ?? data.nganh ?? student?.faculty,
+        portal_verified: Number(serverStudent.portal_verified ?? data.verified ?? 0),
+      };
+      setStudent(updatedStudent);
+      localStorage.setItem('student', JSON.stringify(updatedStudent));
+      window.alert(data.message || 'Xác thực Portal thành công!');
+    } catch (err) {
+      console.error('Lỗi xác thực Portal:', err);
+      window.alert('Không thể kết nối Bot Python hoặc Backend.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
    * Đăng xuất
    */
   const handleLogout = () => {
@@ -204,6 +259,8 @@ function Chat() {
     localStorage.removeItem('student');
     navigate('/');
   };
+
+  const isPortalVerified = Boolean(Number(student?.portal_verified || 0));
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
@@ -257,20 +314,46 @@ function Chat() {
         <div className="pt-6 border-t border-blue-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center font-bold">
-              {student?.display_name?.charAt(student.display_name.length - 1) || 'U'}
+              {student?.display_name ? student.display_name.charAt(student.display_name.length - 1) : 'U'}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate">{student?.display_name || 'Sinh viên'}</p>
               <p className="text-xs text-blue-300">{student?.mssv || ''} - UTH</p>
               <p className="text-xs text-blue-200 truncate">{student?.faculty || 'Ngành: chưa cập nhật từ portal'}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 hover:bg-blue-800/50 rounded-lg transition-colors"
-              title="Đăng xuất"
-            >
-              <LogOut size={18} className="text-blue-300" />
-            </button>
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setShowUserMenu((prev) => !prev)}
+                className="p-2 hover:bg-blue-800/50 rounded-lg transition-colors"
+                title="Menu tài khoản"
+              >
+                <MoreVertical size={18} className="text-blue-300" />
+              </button>
+
+              {showUserMenu && (
+                <div className="absolute right-0 bottom-12 w-64 bg-white text-slate-800 rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50">
+                  <div className="px-4 py-3 text-xs border-b bg-slate-50">
+                    {isPortalVerified ? 'Thông tin sinh viên: Đã xác thực' : 'Thông tin sinh viên: Chưa xác thực'}
+                  </div>
+                  {!isPortalVerified && (
+                    <button
+                      onClick={handleAuthPortal}
+                      disabled={isLoading}
+                      className="w-full text-left px-4 py-3 text-sm hover:bg-orange-50 disabled:opacity-60"
+                    >
+                      Xác thực tài khoản sinh viên
+                    </button>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <LogOut size={16} />
+                    Đăng xuất
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -279,7 +362,14 @@ function Chat() {
       <div className="flex-1 flex flex-col relative">
         <header className="h-16 bg-white border-b flex items-center px-8 shadow-sm justify-between">
           <span className="font-bold text-blue-900">Hỗ trợ đào tạo & Quản lý sinh viên</span>
-          <div className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">Hệ thống sẵn sàng</div>
+          <div className="flex items-center gap-3">
+            <div className={`text-xs px-3 py-1.5 rounded-full font-medium border shadow-sm ${isPortalVerified ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+              {isPortalVerified ? 'Đã xác thực Portal' : 'Chưa xác thực Portal'}
+            </div>
+            <div className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium border border-green-200 shadow-sm">
+              Hệ thống sẵn sàng
+            </div>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">

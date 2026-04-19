@@ -34,6 +34,7 @@ app.use(express.json());
 
 // Auth routes (đăng nhập)
 app.use('/api/auth', authRoutes);
+app.use('/api/portal', require('./routes/portal'));
 
 // Conversation routes (lịch sử tra cứu)
 app.use('/api/conversations', conversationRoutes);

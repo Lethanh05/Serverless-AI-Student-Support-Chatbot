@@ -2,7 +2,7 @@
 // DATABASE.JS - Kết nối MySQL + Tự động tạo bảng
 // ============================================
 const mysql = require('mysql2/promise');
-const bcrypt = require('bcryptjs');
+const { encrypt } = require('./crypto');
 require('dotenv').config();
 
 // Tạo Connection Pool (tối ưu cho production/cloud)
@@ -56,9 +56,16 @@ async function createTables() {
       password VARCHAR(255) NOT NULL,
       display_name VARCHAR(100) NOT NULL,
       faculty VARCHAR(100),
+      portal_verified TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration cho DB cũ: thêm cột portal_verified nếu chưa có
+  const [verifiedColumn] = await pool.execute("SHOW COLUMNS FROM students LIKE 'portal_verified'");
+  if (verifiedColumn.length === 0) {
+    await pool.execute('ALTER TABLE students ADD COLUMN portal_verified TINYINT(1) NOT NULL DEFAULT 0');
+  }
 
   // Bảng cuộc hội thoại
   await pool.execute(`
@@ -94,8 +101,8 @@ async function createTables() {
  */
 async function seedStudents() {
   const students = [
-    { mssv: '21110001', password: '123456', display_name: 'Lê Quang Thạnh', faculty: 'Công nghệ Thông tin' },
-    { mssv: '21110002', password: '123456', display_name: 'Nguyễn Văn Test', faculty: 'Công nghệ Thông tin' },
+    { mssv: 'admin', password: '123456', display_name: 'Admin', faculty: null, portal_verified: 0 },
+   
   ];
 
   for (const student of students) {
@@ -103,12 +110,12 @@ async function seedStudents() {
     const [existing] = await pool.execute('SELECT id FROM students WHERE mssv = ?', [student.mssv]);
     
     if (existing.length === 0) {
-      // Mã hóa password bằng bcrypt (salt rounds = 10)
-      const hashedPassword = await bcrypt.hash(student.password, 10);
+      // Mã hóa 2 chiều để bot Python có thể giải mã dùng lại khi gọi portal
+      const encryptedPassword = encrypt(student.password);
       
       await pool.execute(
-        'INSERT INTO students (mssv, password, display_name, faculty) VALUES (?, ?, ?, ?)',
-        [student.mssv, hashedPassword, student.display_name, student.faculty]
+        'INSERT INTO students (mssv, password, display_name, faculty, portal_verified) VALUES (?, ?, ?, ?, ?)',
+        [student.mssv, encryptedPassword, student.display_name, student.faculty, student.portal_verified]
       );
       console.log(`👤 Đã thêm sinh viên: ${student.mssv} - ${student.display_name}`);
     }

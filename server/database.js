@@ -73,11 +73,24 @@ async function createTables() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       student_id INT NOT NULL,
       title VARCHAR(255) DEFAULT 'Đoạn chat mới',
+      is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+      pinned_at TIMESTAMP NULL DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
     )
   `);
+
+  // Migration cho DB cũ: thêm cột ghim hội thoại nếu chưa có
+  const [pinnedColumn] = await pool.execute("SHOW COLUMNS FROM conversations LIKE 'is_pinned'");
+  if (pinnedColumn.length === 0) {
+    await pool.execute('ALTER TABLE conversations ADD COLUMN is_pinned TINYINT(1) NOT NULL DEFAULT 0');
+  }
+
+  const [pinnedAtColumn] = await pool.execute("SHOW COLUMNS FROM conversations LIKE 'pinned_at'");
+  if (pinnedAtColumn.length === 0) {
+    await pool.execute('ALTER TABLE conversations ADD COLUMN pinned_at TIMESTAMP NULL DEFAULT NULL');
+  }
 
   // Bảng tin nhắn
   await pool.execute(`

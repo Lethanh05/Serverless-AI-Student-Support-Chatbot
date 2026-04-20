@@ -18,11 +18,11 @@ router.get('/', async (req, res) => {
   try {
     const pool = getPool();
     const [conversations] = await pool.execute(
-      `SELECT c.id, c.title, c.created_at, c.updated_at,
+      `SELECT c.id, c.title, c.is_pinned, c.pinned_at, c.created_at, c.updated_at,
               (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count
        FROM conversations c
        WHERE c.student_id = ?
-       ORDER BY c.updated_at DESC`,
+       ORDER BY c.is_pinned DESC, c.pinned_at DESC, c.updated_at DESC`,
       [req.student.id]
     );
 
@@ -152,6 +152,90 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('❌ Lỗi xóa conversation:', error);
     res.status(500).json({ success: false, message: 'Lỗi server.' });
+  }
+});
+
+/**
+ * PATCH /api/conversations/:id/title
+ * Đổi tên cuộc hội thoại
+ */
+router.patch('/:id/title', async (req, res) => {
+  try {
+    const pool = getPool();
+    const conversationId = req.params.id;
+    const nextTitle = String(req.body?.title || '').trim();
+
+    if (!nextTitle) {
+      return res.status(400).json({ success: false, message: 'Tên cuộc hội thoại không được để trống.' });
+    }
+
+    const safeTitle = nextTitle.length > 120 ? nextTitle.slice(0, 120) : nextTitle;
+
+    const [convRows] = await pool.execute(
+      'SELECT id FROM conversations WHERE id = ? AND student_id = ?',
+      [conversationId, req.student.id]
+    );
+
+    if (convRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc hội thoại.' });
+    }
+
+    await pool.execute(
+      'UPDATE conversations SET title = ? WHERE id = ?',
+      [safeTitle, conversationId]
+    );
+
+    const [updatedRows] = await pool.execute(
+      'SELECT id, title, is_pinned, pinned_at, created_at, updated_at FROM conversations WHERE id = ?',
+      [conversationId]
+    );
+
+    return res.json({ success: true, message: 'Đổi tên cuộc hội thoại thành công.', conversation: updatedRows[0] });
+  } catch (error) {
+    console.error('❌ Lỗi đổi tên conversation:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi server.' });
+  }
+});
+
+/**
+ * PATCH /api/conversations/:id/pin
+ * Ghim/Bỏ ghim cuộc hội thoại
+ */
+router.patch('/:id/pin', async (req, res) => {
+  try {
+    const pool = getPool();
+    const conversationId = req.params.id;
+    const isPinned = Number(req.body?.isPinned ? 1 : 0);
+
+    const [convRows] = await pool.execute(
+      'SELECT id FROM conversations WHERE id = ? AND student_id = ?',
+      [conversationId, req.student.id]
+    );
+
+    if (convRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy cuộc hội thoại.' });
+    }
+
+    await pool.execute(
+      `UPDATE conversations
+       SET is_pinned = ?, pinned_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+       WHERE id = ?`,
+      [isPinned, isPinned, conversationId]
+    );
+
+    const [updatedRows] = await pool.execute(
+      'SELECT id, title, is_pinned, pinned_at, created_at, updated_at FROM conversations WHERE id = ?',
+      [conversationId]
+    );
+
+    return res.json({
+      success: true,
+      message: isPinned ? 'Đã ghim cuộc hội thoại.' : 'Đã bỏ ghim cuộc hội thoại.',
+      conversation: updatedRows[0],
+    });
+  } catch (error) {
+    console.error('❌ Lỗi ghim conversation:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi server.' });
   }
 });
 

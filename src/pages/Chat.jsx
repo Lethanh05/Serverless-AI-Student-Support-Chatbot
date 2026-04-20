@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, History, GraduationCap, Plus, Trash2, LogOut, MoreVertical } from 'lucide-react';
+import { Send, User, History, GraduationCap, Plus, Trash2, LogOut, MoreVertical, Pin, Pencil } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ScheduleTable from '../components/RichUI';
 import uthLogo from '../assets/logo/Logo_UTH.png';
@@ -12,6 +12,7 @@ function Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [activeConversationMenuId, setActiveConversationMenuId] = useState(null);
   const [student, setStudent] = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const messagesEndRef = useRef(null);
@@ -40,6 +41,12 @@ function Chat() {
     const closeMenuOnOutsideClick = (event) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setShowUserMenu(false);
+      }
+
+      const clickedConversationMenu = event.target?.closest?.('[data-conversation-menu]');
+      const clickedConversationMenuTrigger = event.target?.closest?.('[data-conversation-menu-trigger]');
+      if (!clickedConversationMenu && !clickedConversationMenuTrigger) {
+        setActiveConversationMenuId(null);
       }
     };
 
@@ -120,11 +127,74 @@ function Chat() {
     }
   };
 
+  const renameConversation = async (conversationId) => {
+    const current = conversations.find((conv) => conv.id === conversationId);
+    const currentTitle = current?.title || 'Đoạn chat mới';
+    const nextTitle = window.prompt('Nhập tên mới cho cuộc hội thoại:', currentTitle);
+
+    setActiveConversationMenuId(null);
+    if (nextTitle === null) return;
+
+    const safeTitle = String(nextTitle || '').trim();
+    if (!safeTitle) {
+      window.alert('Tên cuộc hội thoại không được để trống.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/conversations/${conversationId}/title`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ title: safeTitle }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        window.alert(data.message || 'Không thể đổi tên cuộc hội thoại.');
+        return;
+      }
+
+      setConversations((prev) => prev.map((conv) => (
+        conv.id === conversationId
+          ? { ...conv, title: data.conversation?.title || safeTitle }
+          : conv
+      )));
+    } catch (err) {
+      console.error('Lỗi đổi tên conversation:', err);
+      window.alert('Lỗi kết nối server khi đổi tên cuộc hội thoại.');
+    }
+  };
+
+  const togglePinConversation = async (conversationId) => {
+    const current = conversations.find((conv) => conv.id === conversationId);
+    const nextPin = !Boolean(Number(current?.is_pinned || 0));
+
+    setActiveConversationMenuId(null);
+    try {
+      const res = await fetch(`${API_URL}/conversations/${conversationId}/pin`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ isPinned: nextPin }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        window.alert(data.message || 'Không thể thay đổi trạng thái ghim.');
+        return;
+      }
+
+      await loadConversations();
+    } catch (err) {
+      console.error('Lỗi ghim conversation:', err);
+      window.alert('Lỗi kết nối server khi ghim cuộc hội thoại.');
+    }
+  };
+
   /**
    * Xóa cuộc hội thoại
    */
-  const deleteConversation = async (e, conversationId) => {
-    e.stopPropagation(); // Ngăn click lan ra ngoài
+  const deleteConversation = async (conversationId) => {
+    setActiveConversationMenuId(null);
     
     try {
       const res = await fetch(`${API_URL}/conversations/${conversationId}`, {
@@ -261,6 +331,8 @@ function Chat() {
   };
 
   const isPortalVerified = Boolean(Number(student?.portal_verified || 0));
+  const activeConversation = conversations.find((conv) => conv.id === activeConversationId) || null;
+  const activeConversationTitle = activeConversation?.title || 'Đoạn chat mới';
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
@@ -298,14 +370,67 @@ function Chat() {
                 }`}
               >
                 <History size={18} className="text-blue-400 flex-shrink-0" />
-                <span className="text-sm truncate flex-1">{conv.title}</span>
-                <button
-                  onClick={(e) => deleteConversation(e, conv.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/30 rounded"
-                  title="Xóa cuộc hội thoại"
-                >
-                  <Trash2 size={14} className="text-red-300" />
-                </button>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm truncate flex-1">{conv.title}</span>
+                    {Boolean(Number(conv.is_pinned || 0)) && <Pin size={12} className="text-amber-300 flex-shrink-0" />}
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <button
+                    data-conversation-menu-trigger
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveConversationMenuId((prev) => (prev === conv.id ? null : conv.id));
+                    }}
+                    className="p-1 hover:bg-blue-900/60 rounded transition-colors"
+                    title="Tùy chọn cuộc hội thoại"
+                  >
+                    <MoreVertical size={14} className="text-blue-200" />
+                  </button>
+
+                  {activeConversationMenuId === conv.id && (
+                    <div
+                      data-conversation-menu
+                      className="absolute right-0 top-8 z-50 w-44 bg-white text-slate-800 rounded-lg shadow-xl border border-slate-200 overflow-hidden"
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePinConversation(conv.id);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 flex items-center gap-2"
+                      >
+                        <Pin size={14} />
+                        {Boolean(Number(conv.is_pinned || 0)) ? 'Bỏ ghim' : 'Ghim'}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          renameConversation(conv.id);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center gap-2"
+                      >
+                        <Pencil size={14} />
+                        Đổi tên
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteConversation(conv.id);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 text-red-700 flex items-center gap-2"
+                      >
+                        <Trash2 size={14} />
+                        Xóa
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -361,7 +486,9 @@ function Chat() {
       {/* Vùng Chat chính */}
       <div className="flex-1 flex flex-col relative">
         <header className="h-16 bg-white border-b flex items-center px-8 shadow-sm justify-between">
-          <span className="font-bold text-blue-900">Hỗ trợ đào tạo & Quản lý sinh viên</span>
+          <div className="min-w-0">
+            <p className="text-lg font-extrabold text-blue-900 truncate max-w-[48vw]">{activeConversationTitle}</p>
+          </div>
           <div className="flex items-center gap-3">
             <div className={`text-xs px-3 py-1.5 rounded-full font-medium border shadow-sm ${isPortalVerified ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
               {isPortalVerified ? 'Đã xác thực Portal' : 'Chưa xác thực Portal'}

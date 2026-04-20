@@ -15,6 +15,7 @@ app = FastAPI()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROXY_FILE = os.path.join(BASE_DIR, "proxies.txt")
 PROXY_LIST = []
+PROXY_FILE_LOCK = threading.Lock()
 
 def load_proxies():
     global PROXY_LIST
@@ -30,6 +31,83 @@ def load_proxies():
         print(f"[PROXY] Đã tải thành công {len(PROXY_LIST)} proxy từ file {PROXY_FILE}.")
     else:
         print(f"[WARNING] Không tìm thấy file {PROXY_FILE}! Hệ thống sẽ chạy bằng IP gốc của máy chủ.")
+
+
+def normalize_proxy_value(value):
+    if value is None:
+        return ""
+    return str(value).strip().replace('http://', '').replace('https://', '')
+
+
+def remove_proxy_from_file_and_memory(proxy_value, reason=""):
+    """Xóa proxy die/timeout khỏi PROXY_LIST và proxies.txt."""
+    normalized_target = normalize_proxy_value(proxy_value)
+    if not normalized_target:
+        return False
+
+    removed = False
+    global PROXY_LIST
+
+    with PROXY_FILE_LOCK:
+        if normalized_target in PROXY_LIST:
+            PROXY_LIST = [p for p in PROXY_LIST if p != normalized_target]
+            removed = True
+
+        if os.path.exists(PROXY_FILE):
+            with open(PROXY_FILE, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            kept_lines = []
+            for line in lines:
+                line_stripped = line.strip()
+                if (
+                    line_stripped
+                    and not line_stripped.startswith('#')
+                    and normalize_proxy_value(line_stripped) == normalized_target
+                ):
+                    removed = True
+                    continue
+                kept_lines.append(line)
+
+            with open(PROXY_FILE, "w", encoding="utf-8") as f:
+                f.writelines(kept_lines)
+
+    if removed:
+        print(f"[PROXY] Đã xóa {normalized_target} khỏi danh sách. Lý do: {reason or 'Proxy không ổn định'}")
+    return removed
+
+
+def should_remove_proxy_by_error(error_message="", status_code=None):
+    message = str(error_message or "").lower()
+
+    unhealthy_markers = [
+        "proxyerror",
+        "connect tunnel failed",
+        "timed out",
+        "timeout",
+        "connection refused",
+        "could not connect",
+        "failed to perform",
+        "proxy authentication",
+        "connection reset",
+    ]
+
+    if status_code in (407, 502, 503, 504, 522, 523, 524):
+        return True
+
+    return any(marker in message for marker in unhealthy_markers)
+
+
+def evict_bad_proxy_if_needed(proxies, reason_message="", status_code=None):
+    if not isinstance(proxies, dict):
+        return
+
+    proxy_value = proxies.get("http") or proxies.get("https")
+    if not proxy_value:
+        return
+
+    if should_remove_proxy_by_error(reason_message, status_code=status_code):
+        remove_proxy_from_file_and_memory(proxy_value, reason=reason_message)
 
 
 load_proxies()
@@ -149,6 +227,12 @@ def get_portal_token(username, password):
                             f"Chi tiết: {body_message or response_preview or 'không có'}"
                         )
 
+                        evict_bad_proxy_if_needed(
+                            proxies,
+                            reason_message=f"AUTH status {res.status_code} - {body_message or response_preview}",
+                            status_code=res.status_code,
+                        )
+
                         # Nếu portal trả rõ ràng là sai thông tin đăng nhập thì dừng luôn
                         invalid_hints = [
                             "sai mật khẩu", "sai mat khau", "invalid", "wrong password",
@@ -165,6 +249,7 @@ def get_portal_token(username, password):
                     f"[AUTH] Thử lần {attempt} lỗi qua {label}: {e!r}. "
                     "Đang thử tuyến kế tiếp..."
                 )
+                evict_bad_proxy_if_needed(proxies, reason_message=repr(e))
                 time.sleep(1)
 
         print(f"[AUTH] {username} login thất bại sau {len(candidates)} lần thử. Lỗi cuối: {last_error}")
@@ -301,6 +386,11 @@ def fetch_dashboard_json(token, username):
 
                     if res.status_code != 200:
                         last_error = f"{endpoint} status {res.status_code} qua {label}"
+                        evict_bad_proxy_if_needed(
+                            proxies,
+                            reason_message=last_error,
+                            status_code=res.status_code,
+                        )
                         continue
 
                     try:
@@ -315,6 +405,7 @@ def fetch_dashboard_json(token, username):
                         }
             except Exception as e:
                 last_error = f"{endpoint} lỗi qua {label}: {e!r}"
+                evict_bad_proxy_if_needed(proxies, reason_message=last_error)
 
     if last_error:
         print(f"[DASHBOARD] Không lấy được JSON dashboard bằng tuyến login hiện tại. {last_error}")

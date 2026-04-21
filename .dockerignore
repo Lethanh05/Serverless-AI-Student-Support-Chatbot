@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.vscode
+.env
+*.log
+server/node_modules
+Python_UTH/__pycache__
+Python_UTH/*.pyc

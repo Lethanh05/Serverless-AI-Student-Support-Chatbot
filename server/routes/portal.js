@@ -8,6 +8,7 @@ const { getPool } = require('../database');
 const { decrypt } = require('../crypto');
 
 const router = express.Router();
+const PYTHON_SERVICE_URL = (process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
 const cleanProfileText = (value) => {
   if (typeof value !== 'string') return null;
@@ -50,7 +51,7 @@ router.post('/authenticate', verifyToken, async (req, res) => {
     const decryptedPass = decrypt(dbStudent.password);
 
     // Gửi sang Python Bot (API FastAPI)
-    const pythonRes = await axios.post('http://127.0.0.1:8000/api/auth-and-info', {
+    const pythonRes = await axios.post(`${PYTHON_SERVICE_URL}/api/auth-and-info`, {
       username: loginMssv,
       password: decryptedPass
     });
@@ -141,7 +142,7 @@ router.post('/schedule', verifyToken, async (req, res) => {
     const decryptedPass = decrypt(rows[0].password);
 
     // Gửi sang Python Bot. Nó hỗ trợ query arg 'date' (theo file python api_service.py)
-    const pythonRes = await axios.post(`http://127.0.0.1:8000/api/get-schedule?date=${date}`, {
+    const pythonRes = await axios.post(`${PYTHON_SERVICE_URL}/api/get-schedule?date=${date}`, {
       username: mssv,
       password: decryptedPass
     });

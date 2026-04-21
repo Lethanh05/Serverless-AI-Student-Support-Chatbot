@@ -8,40 +8,74 @@ require('dotenv').config();
 // Tạo Connection Pool (tối ưu cho production/cloud)
 let pool;
 
+function getConnectionBaseConfig() {
+  const socketPath = process.env.DB_SOCKET_PATH
+    || (process.env.INSTANCE_CONNECTION_NAME ? `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}` : null);
 
-async function initDatabase() {
-  // 1. Kết nối MySQL (chưa chọn database) để tạo database
-  const tempConnection = await mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
+  const base = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-  });
+  };
 
-  await tempConnection.execute(
-    `CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-  );
-  await tempConnection.end();
+  if (socketPath) {
+    base.socketPath = socketPath;
+  } else {
+    base.host = process.env.DB_HOST || '127.0.0.1';
+    if (process.env.DB_PORT) {
+      base.port = Number(process.env.DB_PORT);
+    }
+  }
+
+  return base;
+}
+
+function getConnectionConfig(includeDatabase = false) {
+  const config = getConnectionBaseConfig();
+  if (includeDatabase) {
+    config.database = process.env.DB_NAME;
+  }
+  return config;
+}
+
+function isBootstrapEnabled() {
+  const value = String(process.env.DB_BOOTSTRAP ?? 'true').trim().toLowerCase();
+  return !['0', 'false', 'no'].includes(value);
+}
+
+
+async function initDatabase() {
+  const shouldBootstrap = isBootstrapEnabled();
+
+  // 1. Kết nối MySQL (chưa chọn database) để tạo database
+  if (shouldBootstrap) {
+    const tempConnection = await mysql.createConnection(getConnectionConfig(false));
+
+    await tempConnection.execute(
+      `CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+    await tempConnection.end();
+  }
 
   // 2. Tạo connection pool với database đã chọn
   pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    ...getConnectionConfig(true),
     waitForConnections: true,
-    connectionLimit: 10,       // Giới hạn kết nối (tốt cho cloud)
+    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
     queueLimit: 0,
   });
 
-  // 3. Tạo các bảng
-  await createTables();
+  if (shouldBootstrap) {
+    // 3. Tạo các bảng
+    await createTables();
 
-  // 4. Seed dữ liệu sinh viên mẫu
-  await seedStudents();
+    // 4. Seed dữ liệu sinh viên mẫu
+    await seedStudents();
 
-  console.log('Database đã sẵn sàng!');
+    console.log('Database đã sẵn sàng!');
+    return;
+  }
+
+  console.log('Database pool đã sẵn sàng (DB_BOOTSTRAP=false).');
 }
 
 /**

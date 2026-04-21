@@ -13,15 +13,34 @@ const messageRoutes = require('./routes/messages');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+function parseAllowedOrigins() {
+  const rawOrigins = process.env.CORS_ORIGINS;
+  if (!rawOrigins) {
+    return ['http://localhost:5173', 'http://localhost:4173'];
+  }
+
+  return rawOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+const allowedOrigins = parseAllowedOrigins();
+
 // ============ MIDDLEWARE ============
 
 // CORS - Cho phép frontend kết nối
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow server-to-server tools (no Origin) and localhost dev ports.
-    if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+    // Allow server-to-server tools (no Origin) and configured browser origins.
+    if (!origin) {
       return callback(null, true);
     }
+
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -65,6 +84,7 @@ async function startServer() {
       console.log(` Port: ${PORT}`);
       console.log(` API: http://localhost:${PORT}/api`);
       console.log(` Health: http://localhost:${PORT}/api/health`);
+      console.log(` CORS origins: ${allowedOrigins.join(', ')}`);
       console.log(' ================================');
     });
   } catch (error) {
@@ -73,4 +93,8 @@ async function startServer() {
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { app, startServer };

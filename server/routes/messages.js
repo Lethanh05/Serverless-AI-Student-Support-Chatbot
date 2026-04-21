@@ -7,6 +7,7 @@ const { decrypt } = require('../crypto');
 
 const router = express.Router();
 router.use(authenticateToken);
+const PYTHON_SERVICE_URL = (process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
 function isScheduleQuery(message) {
   const lower = message.toLowerCase();
@@ -56,7 +57,7 @@ async function generateWithGeminiFallback(prompt) {
 async function fetchScheduleFromPython(username, password, dateStr, scope = 'week') {
   const targetDate = dateStr || new Date().toISOString().split('T')[0];
   const normalizedScope = scope === 'day' ? 'day' : 'week';
-  const endpoint = `http://127.0.0.1:8000/api/get-schedule?date=${encodeURIComponent(targetDate)}&scope=${normalizedScope}`;
+  const endpoint = `${PYTHON_SERVICE_URL}/api/get-schedule?date=${encodeURIComponent(targetDate)}&scope=${normalizedScope}`;
 
   const pythonRes = await axios.post(endpoint, {
     username,

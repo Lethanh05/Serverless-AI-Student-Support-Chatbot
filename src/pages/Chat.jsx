@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import ScheduleTable from '../components/RichUI';
 import uthLogo from '../assets/logo/Logo_UTH.png';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace(/\/+$/, '');
 
 function Chat() {
   const [messages, setMessages] = useState([]);

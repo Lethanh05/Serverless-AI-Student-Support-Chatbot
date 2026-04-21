@@ -13,7 +13,8 @@ app = FastAPI()
 
 # --- 1. HỆ THỐNG PROXY (ĐỌC TỪ FILE LOCAL) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROXY_FILE = os.path.join(BASE_DIR, "proxies.txt")
+PROXY_FILE = os.getenv("PROXY_FILE_PATH", os.path.join(BASE_DIR, "proxies.txt"))
+PROXY_MUTATION_ENABLED = os.getenv("PROXY_MUTATION_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
 PROXY_LIST = []
 PROXY_FILE_LOCK = threading.Lock()
 
@@ -53,7 +54,7 @@ def remove_proxy_from_file_and_memory(proxy_value, reason=""):
             PROXY_LIST = [p for p in PROXY_LIST if p != normalized_target]
             removed = True
 
-        if os.path.exists(PROXY_FILE):
+        if PROXY_MUTATION_ENABLED and os.path.exists(PROXY_FILE):
             with open(PROXY_FILE, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
@@ -417,6 +418,16 @@ def fetch_dashboard_json(token, username):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+@app.get("/api/health")
+def health():
+    return {
+        "status": "OK",
+        "service": "uth-python-portal-adapter",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "proxy_count": len(PROXY_LIST),
+    }
 
 @app.post("/api/auth-and-info")
 def auth_and_get_info(req: LoginRequest):
